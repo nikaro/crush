@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"github.com/charmbracelet/bubbles/v2/key"
+	"charm.land/bubbles/v2/key"
 )
 
 type CommandsDialogKeyMap struct {
@@ -76,6 +76,7 @@ type ArgumentsDialogKeyMap struct {
 	Confirm  key.Binding
 	Next     key.Binding
 	Previous key.Binding
+	Close    key.Binding
 }
 
 func DefaultArgumentsDialogKeyMap() ArgumentsDialogKeyMap {
@@ -93,6 +94,10 @@ func DefaultArgumentsDialogKeyMap() ArgumentsDialogKeyMap {
 			key.WithKeys("shift+tab", "up"),
 			key.WithHelp("shift+tab/↑", "previous"),
 		),
+		Close: key.NewBinding(
+			key.WithKeys("esc", "alt+esc"),
+			key.WithHelp("esc", "cancel"),
+		),
 	}
 }
 
@@ -102,6 +107,7 @@ func (k ArgumentsDialogKeyMap) KeyBindings() []key.Binding {
 		k.Confirm,
 		k.Next,
 		k.Previous,
+		k.Close,
 	}
 }
 
@@ -122,5 +128,6 @@ func (k ArgumentsDialogKeyMap) ShortHelp() []key.Binding {
 		k.Confirm,
 		k.Next,
 		k.Previous,
+		k.Close,
 	}
 }

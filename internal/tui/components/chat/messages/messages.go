@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/v2/key"
-	"github.com/charmbracelet/bubbles/v2/viewport"
-	tea "github.com/charmbracelet/bubbletea/v2"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/catwalk/pkg/catwalk"
-	"github.com/charmbracelet/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/ordered"
 	"github.com/google/uuid"
 
 	"github.com/atotto/clipboard"
@@ -34,7 +35,7 @@ var ClearSelectionKey = key.NewBinding(key.WithKeys("esc", "alt+esc"), key.WithH
 // MessageCmp defines the interface for message components in the chat interface.
 // It combines standard UI model interfaces with message-specific functionality.
 type MessageCmp interface {
-	util.Model                      // Basic Bubble Tea model interface
+	util.Model                      // Basic Bubble util.Model interface
 	layout.Sizeable                 // Width/height management
 	layout.Focusable                // Focus state management
 	GetMessage() message.Message    // Access to underlying message data
@@ -93,7 +94,7 @@ func (m *messageCmp) Init() tea.Cmd {
 
 // Update handles incoming messages and updates the component state.
 // Manages animation updates for spinning messages and stops animation when appropriate.
-func (m *messageCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *messageCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case anim.StepMsg:
 		m.spinning = m.shouldSpin()
@@ -121,6 +122,9 @@ func (m *messageCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Returns different views for spinning, user, and assistant messages.
 func (m *messageCmp) View() string {
 	if m.spinning && m.message.ReasoningContent().Thinking == "" {
+		if m.message.IsSummaryMessage {
+			m.anim.SetLabel("Summarizing")
+		}
 		return m.style().PaddingLeft(1).Render(m.anim.View())
 	}
 	if m.message.ID != "" {
@@ -183,7 +187,7 @@ func (m *messageCmp) renderAssistantMessage() string {
 	finishedData := m.message.FinishPart()
 	thinkingContent := ""
 
-	if thinking || m.message.ReasoningContent().Thinking != "" {
+	if thinking || strings.TrimSpace(m.message.ReasoningContent().Thinking) != "" {
 		m.anim.SetLabel("Thinking")
 		thinkingContent = m.renderThinkingContent()
 	} else if finished && content == "" && finishedData.Reason == message.FinishReasonEndTurn {
@@ -255,23 +259,33 @@ func (m *messageCmp) toMarkdown(content string) string {
 func (m *messageCmp) renderThinkingContent() string {
 	t := styles.CurrentTheme()
 	reasoningContent := m.message.ReasoningContent()
-	if reasoningContent.Thinking == "" {
+	if strings.TrimSpace(reasoningContent.Thinking) == "" {
 		return ""
 	}
-	lines := strings.Split(reasoningContent.Thinking, "\n")
-	var content strings.Builder
-	lineStyle := t.S().Subtle.Background(t.BgBaseLighter)
-	for i, line := range lines {
-		if line == "" {
-			continue
+
+	width := m.textWidth() - 2
+	width = min(width, 120)
+
+	renderer := styles.GetPlainMarkdownRenderer(width - 1)
+	rendered, err := renderer.Render(reasoningContent.Thinking)
+	if err != nil {
+		lines := strings.Split(reasoningContent.Thinking, "\n")
+		var content strings.Builder
+		lineStyle := t.S().Subtle.Background(t.BgBaseLighter)
+		for i, line := range lines {
+			if line == "" {
+				continue
+			}
+			content.WriteString(lineStyle.Width(width).Render(line))
+			if i < len(lines)-1 {
+				content.WriteString("\n")
+			}
 		}
-		content.WriteString(lineStyle.Width(m.textWidth() - 2).Render(line))
-		if i < len(lines)-1 {
-			content.WriteString("\n")
-		}
+		rendered = content.String()
 	}
-	fullContent := content.String()
-	height := util.Clamp(lipgloss.Height(fullContent), 1, 10)
+
+	fullContent := strings.TrimSpace(rendered)
+	height := ordered.Clamp(lipgloss.Height(fullContent), 1, 10)
 	m.thinkingViewport.SetHeight(height)
 	m.thinkingViewport.SetWidth(m.textWidth())
 	m.thinkingViewport.SetContent(fullContent)
@@ -295,6 +309,7 @@ func (m *messageCmp) renderThinkingContent() string {
 			footer = m.anim.View()
 		}
 	}
+	lineStyle := t.S().Subtle.Background(t.BgBaseLighter)
 	return lineStyle.Width(m.textWidth()).Padding(0, 1).Render(m.thinkingViewport.View()) + "\n\n" + footer
 }
 
@@ -309,7 +324,7 @@ func (m *messageCmp) shouldSpin() bool {
 		return false
 	}
 
-	if m.message.Content().Text != "" {
+	if strings.TrimSpace(m.message.Content().Text) != "" {
 		return false
 	}
 	if len(m.message.ToolCalls()) > 0 {
@@ -344,7 +359,7 @@ func (m *messageCmp) GetSize() (int, int) {
 
 // SetSize updates the width of the message component for text wrapping
 func (m *messageCmp) SetSize(width int, height int) tea.Cmd {
-	m.width = util.Clamp(width, 1, 120)
+	m.width = ordered.Clamp(width, 1, 120)
 	m.thinkingViewport.SetWidth(m.width - 4)
 	return nil
 }
@@ -383,7 +398,7 @@ func (m *assistantSectionModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m *assistantSectionModel) Update(tea.Msg) (tea.Model, tea.Cmd) {
+func (m *assistantSectionModel) Update(tea.Msg) (util.Model, tea.Cmd) {
 	return m, nil
 }
 
